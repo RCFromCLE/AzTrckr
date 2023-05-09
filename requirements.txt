@@ -1,0 +1,8 @@
+flask
+flask-cors
+azure-mgmt-subscription
+azure-identity
+azure-mgmt-resource
+azure-mgmt-monitor
+azure-mgmt-loganalytics
+azure-mgmt-storage
