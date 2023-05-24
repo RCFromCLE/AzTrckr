@@ -1,12 +1,26 @@
 import React, { useState, useEffect } from "react";
 import SubscriptionDetails from "./SubscriptionDetails";
+import styled from 'styled-components';
+
+const StyledDiv = styled.div`
+  background-color: ${props => props.theme.body};
+  color: ${props => props.theme.text};
+  font-family: Arial, sans-serif;
+  padding: 20px;
+`;
+
+const StyledSelect = styled.select`
+  color: ${props => props.theme.text};
+  background-color: ${props => props.theme.toggleBorder};
+  border: none;
+  margin-left: 10px;
+`;
 
 const SubscriptionSelector = ({ onMessage }) => {
   const [subscriptions, setSubscriptions] = useState([]);
   const [selectedSubscription, setSelectedSubscription] = useState(null);
 
   useEffect(() => {
-    // Fetch subscriptions from back-end
     async function fetchSubscriptions() {
       const response = await fetch(`${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions`);
       const data = await response.json();
@@ -28,9 +42,9 @@ const SubscriptionSelector = ({ onMessage }) => {
   };
 
   return (
-    <div>
+    <StyledDiv>
       <label htmlFor="subscriptionSelect">Select a Subscription:</label>
-      <select
+      <StyledSelect
         id="subscriptionSelect"
         value={selectedSubscription?.subscriptionId || ""}
         onChange={handleChange}
@@ -41,9 +55,9 @@ const SubscriptionSelector = ({ onMessage }) => {
             {sub.displayName}
           </option>
         ))}
-      </select>
+      </StyledSelect>
       <SubscriptionDetails subscription={selectedSubscription} onMessage={onMessage} />
-    </div>
+    </StyledDiv>
   );
 };
 

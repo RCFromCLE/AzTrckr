@@ -4,9 +4,9 @@ from azure.identity import DefaultAzureCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.monitor import MonitorManagementClient
 from azure.mgmt.loganalytics import LogAnalyticsManagementClient
+from azure.mgmt.loganalytics.models import Workspace
 from flask import jsonify
 from flask_cors import CORS
-from datetime import datetime, timedelta
 from azure.mgmt.storage import StorageManagementClient
 from azure.mgmt.monitor.models import (
     DiagnosticSettingsResource,
@@ -16,10 +16,15 @@ from azure.mgmt.monitor.models import (
 )
 import logging
 
-
+# Need to specify exact origins in production
 app = Flask(__name__)
-CORS(app)
+allowed_origins = [
+    "http://localhost:3000",  # Your frontend
+    "http://localhost:5000",  # Other allowed origins
+    # Add more origins as needed
+]
 
+CORS(app, resources={r"/*": {"origins": allowed_origins}}, supports_credentials=True)
 logging.basicConfig(level=logging.DEBUG)
 
 # Get subscriptions for currently logged in Azure user
@@ -54,93 +59,167 @@ def get_subscriptions():
         logging.exception("Error occurred while getting subscriptions")
         return jsonify({"error": str(e)}), 500
 
+# Get all Azure supported locations
+@app.route("/locations", methods=["GET"])
+def get_locations():
+    try:
+        subscription_id = request.args.get("subscription_id")
+        if not subscription_id:
+            return jsonify({"error": "Subscription ID is required"}), 400
+
+        credential = DefaultAzureCredential()
+        subscription_client = SubscriptionClient(credential) 
+        # Get all locations
+        locations = subscription_client.subscriptions.list_locations(subscription_id)
+        print("Locations:", locations)
+
+        location_list = []
+
+        for location in locations:
+            if location.name:
+                location_list.append(location.name)
+
+        print("Location list:", location_list)
+        return jsonify(location_list)
+    except Exception as e:
+        logging.exception("Error occurred while getting locations")
+        return jsonify({"error": str(e)}), 500
+
+# Get resource groups for a subscription
+@app.route("/subscriptions/<subscription_id>/resource_groups", methods=["GET"])
+def get_resource_groups(subscription_id):
+    try:
+        credential = DefaultAzureCredential()
+        resource_client = ResourceManagementClient(credential, subscription_id)
+        resource_groups = resource_client.resource_groups.list()
+
+        resource_group_list = []
+
+        for group in resource_groups:
+            resource_group_list.append({"id": group.id, "name": group.name})
+
+        return jsonify(resource_group_list)
+    except Exception as e:
+        logging.exception("Error occurred while getting resource groups")
+        return jsonify({"error": str(e)}), 500
+
+
+# Get all resource groups for a subscription
+@app.route("/subscriptions/<subscription_id>/create-resource-group", methods=["POST"])
+def create_resource_group(subscription_id):
+    try:
+        payload = request.get_json()
+        resource_group_name = payload.get("resourceGroupName")
+        location = payload.get("location")
+
+        if not resource_group_name or not location:
+            return (
+                jsonify({"success": False, "error": "Resource Group Name and Location are required."}),
+                400,
+            )
+
+        credential = DefaultAzureCredential()
+        resource_client = ResourceManagementClient(credential, subscription_id)
+
+        # Add a simple tag to identify the resource group
+        resource_group_params = {
+            "location": location,
+            "tags": {
+                "AZTrckr": "true",
+            },
+        }
+
+        resource_group = resource_client.resource_groups.create_or_update(
+            resource_group_name,
+            resource_group_params,
+        )
+
+        return jsonify({"success": True, "resourceGroupId": resource_group.id})
+
+    except Exception as e:
+        logging.exception(f"Error occurred while creating Resource Group: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
+# Delete a resource group for a subscription if it has tag "AZTrckr"
+@app.route("/subscriptions/<subscription_id>/resource-groups/<resource_group_name>", methods=["DELETE"])
+def delete_resource_group(subscription_id, resource_group_name):
+    try:
+        credential = DefaultAzureCredential()
+        resource_client = ResourceManagementClient(credential, subscription_id)
+        
+        # Check if the resource group is managed by AZTrckr
+        resource_group = resource_client.resource_groups.get(resource_group_name)
+        if not resource_group.tags or "AZTrckr" not in resource_group.tags:
+            return jsonify({"error": "Resource Group is not managed by AZTrckr"}), 400
+
+        delete_operation = resource_client.resource_groups.begin_delete(resource_group_name)
+        delete_operation.wait()  # Wait for the delete operation to complete
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        logging.exception(f"Error occurred while deleting Resource Group: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Enable diagnostics for a subscription
 @app.route("/subscriptions/<subscription_id>/enable-diagnostics", methods=["POST"])
 def enable_diagnostics(subscription_id):
     try:
+        # get the payload from request
         payload = request.get_json()
-        storage_account_id = payload.get("storageAccountId")
+        workspace_id = payload.get("workspaceId")
 
-        if not storage_account_id:
+        # Check if workspace_id is not present
+        if not workspace_id:
             return (
-                jsonify({"success": False, "error": "Storage Account ID is required."}),
+                jsonify({"success": False, "error": "Workspace ID is required."}),
                 400,
             )
 
+        # Use Azure Default Credentials to authenticate with Azure
         credential = DefaultAzureCredential()
+
+        # Instantiate Monitor Management Client
         monitor_client = MonitorManagementClient(credential, subscription_id)
 
-        retention_policy = RetentionPolicy(enabled=True, days=7)
+        # Define a retention policy of 30 days
+        retention_policy = RetentionPolicy(enabled=True, days=30)
 
+        # Define the diagnostic settings
         diagnostic_settings = DiagnosticSettingsResource(
-            storage_account_id=storage_account_id,
+            workspace_id=workspace_id,
             logs=[
-                LogSettings(
-                    category="Administrative",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="Security",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="ServiceHealth",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="Alert",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="Recommendation",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="Policy",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="Autoscale",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
-                LogSettings(
-                    category="ResourceHealth",
-                    enabled=True,
-                    retention_policy=retention_policy,
-                ),
+                LogSettings(category="Administrative", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="Security", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="ServiceHealth", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="Alert", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="Recommendation", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="Policy", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="Autoscale", enabled=True, retention_policy=retention_policy),
+                LogSettings(category="ResourceHealth", enabled=True, retention_policy=retention_policy),
             ],
             metrics=[
-                MetricSettings(
-                    time_grain=None,
-                    category=None,
-                    enabled=True,
-                    retention_policy=retention_policy,
-                )
+                MetricSettings(time_grain=None, category=None, enabled=True, retention_policy=retention_policy),
             ],
         )
 
+        resource_uri = f"/subscriptions/{subscription_id}"
+
+        # Create or update the diagnostic settings
         diagnostic_settings_resource = (
             monitor_client.diagnostic_settings.create_or_update(
-                resource_uri=f"/subscriptions/{subscription_id}",
-                name="diagnostic-settings",
+                resource_uri=resource_uri,
+                name="aztrckr-diagnostic-settings",
                 parameters=diagnostic_settings,
             )
         )
 
         return jsonify({"success": True})
     except Exception as e:
+        # Log the error and return a message to the client
         logging.exception("Error occurred while enabling diagnostics")
-        return jsonify({"error": str(e)}), 500
-
-
+        return jsonify({"success": False, "error": str(e)}), 500
+    
 # Get storage accounts for a subscription
 @app.route("/subscriptions/<subscription_id>/storage_accounts", methods=["GET"])
 def get_storage_accounts(subscription_id):
@@ -159,8 +238,54 @@ def get_storage_accounts(subscription_id):
         logging.exception("Error occurred while getting storage accounts")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/subscriptions/<subscription_id>/diagnostics-settings", methods=["GET"])
+def get_diagnostics_settings(subscription_id):
+    try:
+        # Use Azure Default Credentials to authenticate with Azure
+        credential = DefaultAzureCredential()
+
+        # Instantiate Monitor Management Client
+        monitor_client = MonitorManagementClient(credential, subscription_id)
+
+        # Get diagnostic settings
+        resource_uri = f"/subscriptions/{subscription_id}"
+        diagnostic_settings = monitor_client.diagnostic_settings.list(resource_uri)
+
+        # check if there are any diagnostic settings
+        for setting in diagnostic_settings:
+            # check if there's at least one that has a workspace id
+            if setting.workspace_id:
+                return jsonify({"success": True, "diagnosticsEnabled": True, "destination": setting.workspace_id})
+
+        # if no diagnostic settings were found, return false
+        return jsonify({"success": True, "diagnosticsEnabled": False, "destination": ""})
+
+    except Exception as e:
+        # Log the error and return a message to the client
+        logging.exception("Error occurred while fetching diagnostics settings")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# Get Log Analytics Workspaces for a subscription
+@app.route("/subscriptions/<subscription_id>/log-analytics-workspaces", methods=["GET"])
+def get_log_analytics_workspaces(subscription_id):
+    try:
+        credential = DefaultAzureCredential()
+        log_analytics_client = LogAnalyticsManagementClient(credential, subscription_id)
+        workspaces = log_analytics_client.workspaces.list()
+
+        workspace_list = []
+
+        for workspace in workspaces:
+            workspace_list.append({"id": workspace.id, "name": workspace.name})
+
+        return jsonify(workspace_list)
+    except Exception as e:
+        logging.exception("Error occurred while getting Log Analytics Workspaces")
+        return jsonify({"error": str(e)}), 500
+
 # Create a Log Analytics Workspace for a subscription
-@app.route("/subscriptions/<subscription_id>/create-workspace", methods=["POST"])
+@app.route("/subscriptions/<subscription_id>/create-law", methods=["POST"])
 def create_log_analytics_workspace(subscription_id):
     try:
         payload = request.get_json()
@@ -178,15 +303,19 @@ def create_log_analytics_workspace(subscription_id):
         log_analytics_client = LogAnalyticsManagementClient(credential, subscription_id)
 
         workspace = Workspace(location=location)
-        workspace_creation = log_analytics_client.workspaces.create_or_update(
+        workspace_creation = log_analytics_client.workspaces.begin_create_or_update(
             resource_group,
             workspace_name,
             workspace,
         )
 
-        return jsonify({"success": True, "workspaceId": workspace_creation.id})
+        workspace_creation.wait()  # Wait for the creation operation to complete
+        workspace_result = workspace_creation.result()  # Get the result of the operation
+
+        return jsonify({"success": True, "workspaceId": workspace_result.id})
+
     except Exception as e:
-        logging.exception("Error occurred while creating Log Analytics Workspace")
+        logging.exception(f"Error occurred while creating Log Analytics Workspace: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
