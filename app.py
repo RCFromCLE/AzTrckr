@@ -104,7 +104,7 @@ def get_resource_groups(subscription_id):
         return jsonify({"error": str(e)}), 500
 
 
-# Get all resource groups for a subscription
+# Create Resource Group for a subscription
 @app.route("/subscriptions/<subscription_id>/create-resource-group", methods=["POST"])
 def create_resource_group(subscription_id):
     try:

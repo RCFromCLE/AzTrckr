@@ -228,7 +228,6 @@ const extractLAWName = (resourceUri) => {
   return '';
 };
 
-
 // Fetch current diagnostics settings status when subscription changes
 useEffect(() => {
   const fetchDiagnosticsSettings = async () => {
@@ -280,6 +279,75 @@ const enableDiagnosticsForLAW = async () => {
   }
 };
 
+// Function to create a resource group
+const createResourceGroup = async () => {
+  try {
+    // Get the resource group name and location from user input
+    const resourceGroupName = document.getElementById("resourceGroupNameInput").value;
+    const location = document.getElementById("locationSelect").value;
+
+    if (!resourceGroupName || !location) {
+      onMessage && onMessage("Resource Group Name and Location are required.");
+      return;
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/create-resource-group`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resourceGroupName, location }),
+      }
+    );
+
+    const data = await response.json();
+    if (data.success) {
+      onMessage && onMessage("Resource Group created successfully.");
+      // Additional logic or state updates after successful resource group creation
+    } else {
+      onMessage && onMessage(`Error: ${data.error}`);
+    }
+  } catch (error) {
+    console.error("Error creating Resource Group:", error);
+    onMessage && onMessage("An error occurred while creating the Resource Group.");
+  }
+};
+
+const StyledInput = styled.input`
+  /* Add your input styles here */
+`;
+
+// Function to delete a resource group
+const deleteResourceGroup = async (resourceGroupName) => {
+  try {
+    // Update UI to indicate deletion in progress
+    onMessage && onMessage("Deleting resource group...");
+
+    const response = await fetch(
+      `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/resource-groups/${resourceGroupName}`,
+      {
+        method: "DELETE",
+      }
+    );
+
+    if (response.status === 202) {
+      // Resource group deletion initiated
+      onMessage && onMessage("Resource group deletion initiated. Please wait...");
+    } else if (response.status === 200) {
+      // Resource group deleted successfully
+      onMessage && onMessage("Resource group deleted successfully.");
+      // Additional logic or state updates after successful resource group deletion
+    } else {
+      // Handle other response statuses
+      const data = await response.json();
+      onMessage && onMessage(`Error: ${data.error}`);
+    }
+  } catch (error) {
+    console.error("Error deleting Resource Group:", error);
+    onMessage && onMessage("An error occurred while deleting the Resource Group.");
+  }
+};
+
 if (!subscription) {
   return <p>Welcome to AZTrckr. Please select a subscription to get started</p>;
 }
@@ -289,41 +357,90 @@ return (
     {/* Subscription Information */}
     <StyledSection>
       <StyledH2>{subscription.displayName}</StyledH2>
-      <StyledP><Strong>ID:</Strong> {subscription.subscriptionId}</StyledP>
-      <StyledP><Strong>Display Name:</Strong> {subscription.displayName}</StyledP>
+      <StyledP>
+        <Strong>ID:</Strong> {subscription.subscriptionId}
+      </StyledP>
+      <StyledP>
+        <Strong>Display Name:</Strong> {subscription.displayName}
+      </StyledP>
       {subscription && <StyledP><Strong>Total Resources:</Strong> {totalResources}</StyledP>}
     </StyledSection>
 
-{/* Export Activity Logs */}
-<StyledSection>
-  <StyledH3>Activity Logs</StyledH3>
-  {diagnosticsEnabled && (
-    <StyledP>
-      Current Activity Logs Destination: 
-      <Strong>{extractLAWName(diagnosticsDestination)}</Strong>
-    </StyledP>
-  )}
-  {!diagnosticsEnabled && <StyledP>Activity logs are not currently being exported.</StyledP>}
-  {logAnalyticsWorkspaces && logAnalyticsWorkspaces.length > 0 && (
-    <div>
-      <StyledLabel htmlFor="lawSelect">Change Activity Logs Destination:</StyledLabel>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <StyledSelect id="lawSelect" value={selectedLAW} onChange={handleLAWChange}>
-          <option value="">-- Select a workspace --</option>
-          {logAnalyticsWorkspaces.map((workspace) => (
-            <option key={workspace.id} value={workspace.id}>
-              {workspace.name}
+    {/* Create Resource Group */}
+    <StyledSection>
+      <StyledH3>Create Resource Group</StyledH3>
+      <div>
+        <StyledLabel htmlFor="resourceGroupNameInput">Resource Group Name:</StyledLabel>
+        <StyledInput type="text" id="resourceGroupNameInput" />
+      </div>
+      <div>
+        <StyledLabel htmlFor="locationSelect"></StyledLabel>
+        <StyledSelect id="locationSelect">
+          <option value="">-- Select a location --</option>
+          {locations.map((location) => (
+            <option key={location} value={location}>
+              {location}
             </option>
           ))}
         </StyledSelect>
-        <StyledButton onClick={enableDiagnosticsForLAW} disabled={!selectedLAW || (logAnalyticsWorkspaces.find(law => law.id === selectedLAW) && logAnalyticsWorkspaces.find(law => law.id === selectedLAW).diagnosticsEnabled)}>
-          Enable Activity Logs
-        </StyledButton>
       </div>
-      {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
-    </div>
-  )}
-</StyledSection>
+      <StyledButton onClick={createResourceGroup}>Create</StyledButton>
+    </StyledSection>
+
+    {/* Display Resource Groups */}
+    <StyledSection>
+      <StyledH3>Resource Groups</StyledH3>
+      {resourceGroups.length > 0 ? (
+        <ul>
+          {resourceGroups.map((group) => (
+            <li key={group.id}>
+              {group.name}
+              <StyledButton onClick={() => deleteResourceGroup(group.name)}>Delete</StyledButton>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <StyledP>No resource groups found.</StyledP>
+      )}
+    </StyledSection>
+
+    {/* Export Activity Logs */}
+    <StyledSection>
+      <StyledH3>Activity Logs</StyledH3>
+      {diagnosticsEnabled && (
+        <StyledP>
+          Current Activity Logs Destination:
+          <Strong>{extractLAWName(diagnosticsDestination)}</Strong>
+        </StyledP>
+      )}
+      {!diagnosticsEnabled && <StyledP>Activity logs are not currently being exported.</StyledP>}
+      {logAnalyticsWorkspaces && logAnalyticsWorkspaces.length > 0 && (
+        <div>
+          <StyledLabel htmlFor="lawSelect">Change Activity Logs Destination:</StyledLabel>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <StyledSelect id="lawSelect" value={selectedLAW} onChange={handleLAWChange}>
+              <option value="">-- Select a workspace --</option>
+              {logAnalyticsWorkspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </StyledSelect>
+            <StyledButton
+              onClick={enableDiagnosticsForLAW}
+              disabled={
+                !selectedLAW ||
+                (logAnalyticsWorkspaces.find((law) => law.id === selectedLAW) &&
+                  logAnalyticsWorkspaces.find((law) => law.id === selectedLAW).diagnosticsEnabled)
+              }
+            >
+              Enable Activity Logs
+            </StyledButton>
+          </div>
+          {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
+        </div>
+      )}
+    </StyledSection>
 
     {/* Create Log Analytics Workspace */}
     <StyledSection>
@@ -339,6 +456,5 @@ return (
   </StyledDiv>
 );
 }
-
 export default SubscriptionDetails;
 

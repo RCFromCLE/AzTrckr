@@ -111,7 +111,7 @@ const LAWCreate = ({ subscriptionId, resourceGroups, locations, onMessage }) => 
   return (
     <StyledForm onSubmit={createWorkspace}>
       <StyledDiv>
-        <label htmlFor="resourceGroupSelect">Resource Group:</label>
+        <label htmlFor="resourceGroupSelect"></label>
         <StyledSelect id="resourceGroupSelect" value={selectedResourceGroup} onChange={handleResourceGroupChange}>
           <option value="">-- Select a resource group --</option>
           {resourceGroups.map((group) => (
@@ -124,7 +124,7 @@ const LAWCreate = ({ subscriptionId, resourceGroups, locations, onMessage }) => 
         <StyledInput type="text" id="workspaceName" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} />
       </StyledDiv>
       <StyledDiv>
-        <label htmlFor="locationSelect">Location:</label>
+        <label htmlFor="locationSelect"></label>
         <StyledSelect id="locationSelect" value={selectedLocation} onChange={handleLocationChange}>
           <option value="">-- Select a location --</option>
           {locations.map((location) => (
