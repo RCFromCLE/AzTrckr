@@ -85,10 +85,13 @@ def get_locations():
         logging.exception("Error occurred while getting locations")
         return jsonify({"error": str(e)}), 500
 
-# Get resource groups for a subscription
 @app.route("/subscriptions/<subscription_id>/resource_groups", methods=["GET"])
 def get_resource_groups(subscription_id):
     try:
+        tag_name = request.args.get("tag")  # Retrieve tag from request arguments
+        if not tag_name:
+            return jsonify({"error": "Tag is required"}), 400
+
         credential = DefaultAzureCredential()
         resource_client = ResourceManagementClient(credential, subscription_id)
         resource_groups = resource_client.resource_groups.list()
@@ -96,13 +99,16 @@ def get_resource_groups(subscription_id):
         resource_group_list = []
 
         for group in resource_groups:
-            resource_group_list.append({"id": group.id, "name": group.name})
+            if group.tags and tag_name in group.tags:  # Check if resource group has the tag
+                resource_group_list.append({"id": group.id, "name": group.name})
+
+        if len(resource_group_list) == 0:  # If no resource groups have the tag, return a message
+            return jsonify([])  # return an empty array if no resource groups found
 
         return jsonify(resource_group_list)
     except Exception as e:
         logging.exception("Error occurred while getting resource groups")
         return jsonify({"error": str(e)}), 500
-
 
 # Create Resource Group for a subscription
 @app.route("/subscriptions/<subscription_id>/create-resource-group", methods=["POST"])
@@ -220,24 +226,10 @@ def enable_diagnostics(subscription_id):
         logging.exception("Error occurred while enabling diagnostics")
         return jsonify({"success": False, "error": str(e)}), 500
     
-# Get storage accounts for a subscription
-@app.route("/subscriptions/<subscription_id>/storage_accounts", methods=["GET"])
-def get_storage_accounts(subscription_id):
-    try:
-        credential = DefaultAzureCredential()
-        storage_client = StorageManagementClient(credential, subscription_id)
-        storage_accounts = storage_client.storage_accounts.list()
+# Get diagnostics settings for a subscription
+import logging
 
-        storage_account_list = []
-
-        for account in storage_accounts:
-            storage_account_list.append({"id": account.id, "name": account.name})
-
-        return jsonify(storage_account_list)
-    except Exception as e:
-        logging.exception("Error occurred while getting storage accounts")
-        return jsonify({"error": str(e)}), 500
-
+# Get diagnostics settings for a subscription
 @app.route("/subscriptions/<subscription_id>/diagnostics-settings", methods=["GET"])
 def get_diagnostics_settings(subscription_id):
     try:
@@ -247,37 +239,72 @@ def get_diagnostics_settings(subscription_id):
         # Instantiate Monitor Management Client
         monitor_client = MonitorManagementClient(credential, subscription_id)
 
+        # Instantiate Resource Management Client
+        resource_client = ResourceManagementClient(credential, subscription_id)
+
+        # Instantiate Log Analytics Management Client
+        loganalytics_client = LogAnalyticsManagementClient(credential, subscription_id)
+
         # Get diagnostic settings
         resource_uri = f"/subscriptions/{subscription_id}"
         diagnostic_settings = monitor_client.diagnostic_settings.list(resource_uri)
 
-        # check if there are any diagnostic settings
-        for setting in diagnostic_settings:
-            # check if there's at least one that has a workspace id
-            if setting.workspace_id:
-                return jsonify({"success": True, "diagnosticsEnabled": True, "destination": setting.workspace_id})
+        matching_workspaces = []
 
-        # if no diagnostic settings were found, return false
-        return jsonify({"success": True, "diagnosticsEnabled": False, "destination": ""})
+        # Check if there are any diagnostic settings
+        for setting in diagnostic_settings:
+            # Check if there's at least one that has a workspace id
+            if setting.workspace_id:
+                # Extract the resource group name and workspace name from the workspace id
+                workspace_resource_group = setting.workspace_id.split("/")[4]
+                workspace_name = setting.workspace_id.split("/")[-1]
+
+                # Get the resource group details
+                resource_group = resource_client.resource_groups.get(workspace_resource_group)
+
+                # Check if the 'AZTrckr' tag is present and set to 'true'
+                if resource_group.tags and resource_group.tags.get('AZTrckr') == 'true':
+                    # Get the workspace details
+                    workspace = loganalytics_client.workspaces.get(resource_group.name, workspace_name)
+                    # Determine if the diagnostic setting is enabled
+                    enabled = getattr(setting, 'enabled', True)
+                    # Append the diagnostic settings with the workspace name and enabled status
+                    matching_workspaces.append({
+                        "name": setting.name,
+                        "workspaceName": workspace.name,
+                        "enabled": enabled
+                    })
+                else:
+                    logging.warning("Diagnostic setting '%s' is skipped because the 'AZTrckr' tag is not set to 'true' in the associated resource group '%s'.", setting.name, resource_group.name)
+            else:
+                logging.warning("Diagnostic setting '%s' is skipped because it does not have a workspace id.", setting.name)
+
+        # Return all matching workspaces
+        return jsonify({"success": True, "diagnosticsEnabled": bool(matching_workspaces), "settings": matching_workspaces})
 
     except Exception as e:
-        # Log the error and return a message to the client
-        logging.exception("Error occurred while fetching diagnostics settings")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
+        logging.exception("An error occurred while retrieving diagnostics settings.")
+        return jsonify({"success": False, "error": str(e)})
+            
 # Get Log Analytics Workspaces for a subscription
 @app.route("/subscriptions/<subscription_id>/log-analytics-workspaces", methods=["GET"])
 def get_log_analytics_workspaces(subscription_id):
     try:
         credential = DefaultAzureCredential()
+        resource_client = ResourceManagementClient(credential, subscription_id)
         log_analytics_client = LogAnalyticsManagementClient(credential, subscription_id)
-        workspaces = log_analytics_client.workspaces.list()
-
+        
+        resource_groups = resource_client.resource_groups.list()
         workspace_list = []
 
-        for workspace in workspaces:
-            workspace_list.append({"id": workspace.id, "name": workspace.name})
+        for resource_group in resource_groups:
+            # Check if the 'AZTrckr' tag is present and set to 'true'
+            if resource_group.tags and resource_group.tags.get('AZTrckr') == 'true':
+                workspaces = log_analytics_client.workspaces.list_by_resource_group(resource_group.name)
+                for workspace in workspaces:
+                    workspace_list.append({"id": workspace.id, "name": workspace.name})
+            else:
+                logging.warning("Resource group '%s' is skipped because the 'AZTrckr' tag is not set to 'true'.", resource_group.name)
 
         return jsonify(workspace_list)
     except Exception as e:

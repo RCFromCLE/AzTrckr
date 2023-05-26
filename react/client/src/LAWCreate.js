@@ -20,7 +20,6 @@ const StyledSelect = styled.select`
 
 const StyledInput = styled.input`
   color: ${props => props.theme.text};
-  background-color: ${props => props.theme.toggleBorder};
   border: none;
   margin-right: 10px;
 `;
@@ -31,7 +30,7 @@ const StyledButton = styled.button`
   color: ${props => props.theme.text};
   border: none;
   padding: 10px;
-  margin: 10px;
+  margin: 5px;
   cursor: pointer;
   font-size: 16px;
   transition: background-color 0.3s ease;
@@ -111,8 +110,7 @@ const LAWCreate = ({ subscriptionId, resourceGroups, locations, onMessage }) => 
   return (
     <StyledForm onSubmit={createWorkspace}>
       <StyledDiv>
-        <label htmlFor="resourceGroupSelect"></label>
-        <StyledSelect id="resourceGroupSelect" value={selectedResourceGroup} onChange={handleResourceGroupChange}>
+        <StyledSelect id="resourceGroupSelect" value={selectedResourceGroup} onChange={handleResourceGroupChange} placeholder="Select a resource group">
           <option value="">-- Select a resource group --</option>
           {resourceGroups.map((group) => (
             <option key={group.id} value={group.name}>{group.name}</option>
@@ -120,12 +118,10 @@ const LAWCreate = ({ subscriptionId, resourceGroups, locations, onMessage }) => 
         </StyledSelect>
       </StyledDiv>
       <StyledDiv>
-        <label htmlFor="workspaceName">Workspace Name:</label>
-        <StyledInput type="text" id="workspaceName" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} />
+        <StyledInput type="text" id="workspaceName" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="aztrckr-log-01" />
       </StyledDiv>
       <StyledDiv>
-        <label htmlFor="locationSelect"></label>
-        <StyledSelect id="locationSelect" value={selectedLocation} onChange={handleLocationChange}>
+        <StyledSelect id="locationSelect" value={selectedLocation} onChange={handleLocationChange} placeholder="Select a location">
           <option value="">-- Select a location --</option>
           {locations.map((location) => (
             <option key={location} value={location}>{location}</option>

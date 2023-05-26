@@ -28,11 +28,9 @@ const StyledButton = styled.button`
   }
 
   &:disabled {
-    color: ${props => props.theme.disabledColor}; // Replace with the actual color for disabled button text
     cursor: not-allowed;
   }
 `;
-
 
 
 // StyledSelect component represents a styled select dropdown
@@ -82,8 +80,6 @@ const StyledMessage = styled.p`
 // SubscriptionDetails component displays the details of a subscription
 const SubscriptionDetails = ({ subscription, onMessage }) => {
   // State variables
-  // const [storageAccounts, setStorageAccounts] = useState([]); // Stores the list of storage accounts
-  // const [selectedStorageAccount, setSelectedStorageAccount] = useState(""); // Stores the selected storage account
   const [totalResources, setTotalResources] = useState(null); // Stores the total number of resources
   const [resourceGroups, setResourceGroups] = useState([]); // Stores the list of resource groups
   const [locations, setLocations] = useState([]); // Stores the list of locations
@@ -112,20 +108,8 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
     }
   }, [subscription]);
 
-// Fetches storage accounts associated with the subscription
-// const fetchStorageAccounts = async () => {
-//   const response = await fetch(
-//     `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/storage_accounts`
-//   );
-//   const data = await response.json();
-//   const storageAccountsData = data.map((account) => {
-//     const diagnosticsEnabled = subscription.activityLogsEnabled;
-//     return { ...account, diagnosticsEnabled };
-//   });
-//   setStorageAccounts(storageAccountsData);
-// };
 
-// Fetches the total number of resources in the subscription
+  // Fetches the total number of resources in the subscription
   const fetchTotalResources = async () => {
     const response = await fetch(
       `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions`
@@ -137,49 +121,22 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
     setTotalResources(subscriptionData.resourceCount);
   };
 
-// // Handles the change event of the storage account dropdown
-// const handleStorageAccountChange = (event) => {
-//   setSelectedStorageAccount(event.target.value);
-// };
-
-// // Enables diagnostics for the selected storage account
-// const enableDiagnostics = async () => {
-//   if (!selectedStorageAccount) {
-//     onMessage && onMessage("Please select a storage account."); // Display an error message if no storage account is selected
-//     return;
-//   }
-
-//   const storageAccount = storageAccounts.find(sa => sa.id === selectedStorageAccount);
-//   if (storageAccount && storageAccount.diagnosticsEnabled) {
-//     onMessage && onMessage("Diagnostics are already enabled for this storage account."); // Display a message if diagnostics are already enabled
-//     return;
-//   }
-
-//   const response = await fetch(
-//     `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/enable-diagnostics`, // Make a request to enable diagnostics for the selected storage account
-//     {
-//       method: "POST",
-//       headers: { "Content-Type": "application/json" },
-//       body: JSON.stringify({ storageAccountId: selectedStorageAccount }), // Send the selected storage account ID in the request body
-//     }
-//   );
-
-//   const data = await response.json();
-//   if (data.success) {
-//     onMessage && onMessage("Diagnostics enabled successfully."); // Display a success message if diagnostics are enabled successfully
-//   } else {
-//     onMessage && onMessage(`Error: ${data.error}`); // Display an error message if there's an error enabling diagnostics
-//   }
-// };
-
-  const fetchResourceGroups = async () => {
-    const response = await fetch(
-      `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/resource_groups`
-    );
-    const data = await response.json();
+// Fetches the list of resource groups in the subscription that are managed by AZTrckr
+const fetchResourceGroups = async () => {
+  const response = await fetch(
+    `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/resource_groups?tag=AZTrckr`
+  );
+  const data = await response.json();
+  
+  if (Array.isArray(data)) {
     setResourceGroups(data);
-  };
+  } else {
+    console.log(data.message);
+    setResourceGroups([]); // set to empty array if data is not an array
+  }
+};
 
+  // Fetches the list of locations in the subscription
   const fetchLocations = async () => {
     try {
       const response = await fetch(
@@ -217,6 +174,9 @@ const handleLAWChange = (event) => {
 const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
 const [diagnosticsDestination, setDiagnosticsDestination] = useState("");
 const [diagnosticsMessage, setDiagnosticsMessage] = useState("");
+const [selectedResourceGroup, setSelectedResourceGroup] = useState(""); // Stores the selected resource group
+const [diagnosticsSettings, setDiagnosticsSettings] = useState([]);
+
 
 // Extracts the LAW name from the resource URI
 const extractLAWName = (resourceUri) => {
@@ -231,31 +191,43 @@ const extractLAWName = (resourceUri) => {
 // Fetch current diagnostics settings status when subscription changes
 useEffect(() => {
   const fetchDiagnosticsSettings = async () => {
-    const response = await fetch(
-      `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/diagnostics-settings`
-    );
-    const data = await response.json();
-    if (data.success) {
-      setDiagnosticsEnabled(data.diagnosticsEnabled);
-      setDiagnosticsDestination(data.destination);
-    } else {
-      onMessage && onMessage(`Error: ${data.error}`);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/diagnostics-settings`
+      );
+      const data = await response.json();
+      if (data.success) {
+        setDiagnosticsEnabled(data.diagnosticsEnabled);
+        setDiagnosticsSettings(data.settings.map((setting) => ({
+          name: setting.name,
+          workspaceName: setting.workspaceName,
+          enabled: setting.enabled
+        })));
+      } else {
+        onMessage && onMessage(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error("Error fetching diagnostics settings:", error);
+      onMessage && onMessage("An error occurred while fetching diagnostics settings.");
     }
   };
-  if (subscription) {  // only fetch diagnostics settings if subscription exists
+
+  if (subscription) {
     fetchDiagnosticsSettings();
   }
-}, [subscription]);  // depends on subscription
+}, [subscription]);
 
-// Enables diagnostics for the selected Log Analytics Workspace
+
+// Enable diagnostics for the selected Log Analytics Workspace
 const enableDiagnosticsForLAW = async () => {
   if (!selectedLAW) {
     onMessage && onMessage("Please select a Log Analytics Workspace.");
     return;
   }
 
-  const LAW = logAnalyticsWorkspaces.find(law => law.id === selectedLAW);
-  if (LAW && LAW.diagnosticsEnabled) {
+  const LAW = logAnalyticsWorkspaces.find((law) => law.id === selectedLAW);
+  const currentSettings = diagnosticsSettings.find((setting) => setting.workspaceName === LAW.name);
+  if (LAW && currentSettings && currentSettings.enabled) {
     onMessage && onMessage("Diagnostics are already enabled for this Log Analytics Workspace.");
     return;
   }
@@ -265,10 +237,10 @@ const enableDiagnosticsForLAW = async () => {
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspaceId: selectedLAW })
+      body: JSON.stringify({ workspaceId: selectedLAW }),
     }
   );
-  
+
   const data = await response.json();
   console.log('Enable Diagnostics Response:', data); // Log the response for debugging
   if (data.success) {
@@ -279,7 +251,7 @@ const enableDiagnosticsForLAW = async () => {
   }
 };
 
-// Function to create a resource group
+// Function to create a resource group to be called when the user clicks the Create Resource Group button
 const createResourceGroup = async () => {
   try {
     // Get the resource group name and location from user input
@@ -291,6 +263,7 @@ const createResourceGroup = async () => {
       return;
     }
 
+    // Call the API to create the resource group
     const response = await fetch(
       `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/create-resource-group`,
       {
@@ -299,7 +272,7 @@ const createResourceGroup = async () => {
         body: JSON.stringify({ resourceGroupName, location }),
       }
     );
-
+    // Parse the response
     const data = await response.json();
     if (data.success) {
       onMessage && onMessage("Resource Group created successfully.");
@@ -312,12 +285,12 @@ const createResourceGroup = async () => {
     onMessage && onMessage("An error occurred while creating the Resource Group.");
   }
 };
-
+// Styled components for the input and button
 const StyledInput = styled.input`
   /* Add your input styles here */
 `;
 
-// Function to delete a resource group
+// Function to delete a resource group to be called when the user clicks the Delete Resource Group button
 const deleteResourceGroup = async (resourceGroupName) => {
   try {
     // Update UI to indicate deletion in progress
@@ -349,7 +322,7 @@ const deleteResourceGroup = async (resourceGroupName) => {
 };
 
 if (!subscription) {
-  return <p>Welcome to AZTrckr. Please select a subscription to get started</p>;
+  return <p>Welcome to AzTrckr. Please select a subscription to get started</p>;
 }
 
 return (
@@ -366,81 +339,83 @@ return (
       {subscription && <StyledP><Strong>Total Resources:</Strong> {totalResources}</StyledP>}
     </StyledSection>
 
-    {/* Create Resource Group */}
-    <StyledSection>
-      <StyledH3>Create Resource Group</StyledH3>
-      <div>
-        <StyledLabel htmlFor="resourceGroupNameInput">Resource Group Name:</StyledLabel>
-        <StyledInput type="text" id="resourceGroupNameInput" />
-      </div>
-      <div>
-        <StyledLabel htmlFor="locationSelect"></StyledLabel>
-        <StyledSelect id="locationSelect">
-          <option value="">-- Select a location --</option>
-          {locations.map((location) => (
-            <option key={location} value={location}>
-              {location}
+{/* Create Resource Group */}
+<StyledSection>
+  <StyledH3>Create AzTrckr Resource Group</StyledH3>
+  <div>
+    <StyledInput type="text" id="resourceGroupNameInput" placeholder="aztrckr-rg-01" />
+  </div>
+  <div>
+    <br />
+    <StyledSelect id="locationSelect">
+      <option value="">-- Select a location --</option>
+      {locations.map((location) => (
+        <option key={location} value={location}>
+          {location}
+        </option>
+      ))}
+    </StyledSelect>
+  </div>
+  <StyledButton onClick={createResourceGroup}>Create</StyledButton>
+</StyledSection>
+
+<StyledSection>
+  <StyledH3>Delete AzTrckr Resource Group</StyledH3>
+  <div>
+    <StyledLabel htmlFor="resourceGroupDeleteSelect"></StyledLabel>
+    <StyledSelect id="resourceGroupDeleteSelect" value={selectedResourceGroup} onChange={(e) => setSelectedResourceGroup(e.target.value)}>
+      <option value="">-- Select a resource group --</option>
+      {resourceGroups.map((group) => (
+        <option key={group.name} value={group.name}>
+          {group.name}
+        </option>
+      ))}
+    </StyledSelect>
+  </div>
+  <StyledButton onClick={() => deleteResourceGroup(selectedResourceGroup)}>Delete</StyledButton>
+</StyledSection>
+
+{/* Activity Logs */}
+<StyledSection>
+  <StyledH3>AzTrckr Activity Logs</StyledH3>
+{diagnosticsEnabled && diagnosticsSettings.length > 0 ? (
+  <div>
+    {diagnosticsSettings.map((setting, index) => (
+      <StyledP key={index}>
+        Diagnostic Setting: <Strong>{setting.name}</Strong> <br />
+        Log Analytics Workspace: <Strong>{setting.workspaceName}</Strong> <br />
+      </StyledP>
+    ))}
+  </div>
+) : (
+  <StyledP>No log analytics workspaces found. Create one below to enable activity logs.</StyledP>
+)}
+  {logAnalyticsWorkspaces && logAnalyticsWorkspaces.length > 0 && (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <StyledSelect id="lawSelect" value={selectedLAW} onChange={handleLAWChange}>
+          <option value="">-- Select a workspace --</option>
+          {logAnalyticsWorkspaces.map((workspace) => (
+            <option key={workspace.id} value={workspace.id}>
+              {workspace.name}
             </option>
           ))}
         </StyledSelect>
+        <StyledButton
+          onClick={enableDiagnosticsForLAW}
+          disabled={
+            !selectedLAW ||
+            (logAnalyticsWorkspaces.find((law) => law.id === selectedLAW) &&
+              logAnalyticsWorkspaces.find((law) => law.id === selectedLAW).diagnosticsEnabled)
+          }
+        >
+          Enable Activity Logs
+        </StyledButton>
       </div>
-      <StyledButton onClick={createResourceGroup}>Create</StyledButton>
-    </StyledSection>
-
-    {/* Display Resource Groups */}
-    <StyledSection>
-      <StyledH3>Resource Groups</StyledH3>
-      {resourceGroups.length > 0 ? (
-        <ul>
-          {resourceGroups.map((group) => (
-            <li key={group.id}>
-              {group.name}
-              <StyledButton onClick={() => deleteResourceGroup(group.name)}>Delete</StyledButton>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <StyledP>No resource groups found.</StyledP>
-      )}
-    </StyledSection>
-
-    {/* Export Activity Logs */}
-    <StyledSection>
-      <StyledH3>Activity Logs</StyledH3>
-      {diagnosticsEnabled && (
-        <StyledP>
-          Current Activity Logs Destination:
-          <Strong>{extractLAWName(diagnosticsDestination)}</Strong>
-        </StyledP>
-      )}
-      {!diagnosticsEnabled && <StyledP>Activity logs are not currently being exported.</StyledP>}
-      {logAnalyticsWorkspaces && logAnalyticsWorkspaces.length > 0 && (
-        <div>
-          <StyledLabel htmlFor="lawSelect">Change Activity Logs Destination:</StyledLabel>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <StyledSelect id="lawSelect" value={selectedLAW} onChange={handleLAWChange}>
-              <option value="">-- Select a workspace --</option>
-              {logAnalyticsWorkspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                </option>
-              ))}
-            </StyledSelect>
-            <StyledButton
-              onClick={enableDiagnosticsForLAW}
-              disabled={
-                !selectedLAW ||
-                (logAnalyticsWorkspaces.find((law) => law.id === selectedLAW) &&
-                  logAnalyticsWorkspaces.find((law) => law.id === selectedLAW).diagnosticsEnabled)
-              }
-            >
-              Enable Activity Logs
-            </StyledButton>
-          </div>
-          {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
-        </div>
-      )}
-    </StyledSection>
+      {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
+    </div>
+  )}
+</StyledSection>
 
     {/* Create Log Analytics Workspace */}
     <StyledSection>
