@@ -168,7 +168,7 @@ def delete_resource_group(subscription_id, resource_group_name):
         return jsonify({"error": str(e)}), 500
 
 # Enable diagnostics for a subscription
-@app.route("/subscriptions/<subscription_id>/enable-diagnostics", methods=["POST"])
+@app.route("/subscriptions/<subscription_id>/enable_diagnostics", methods=["POST"])
 def enable_diagnostics(subscription_id):
     try:
         # get the payload from request
@@ -221,14 +221,15 @@ def enable_diagnostics(subscription_id):
         )
 
         return jsonify({"success": True})
+    except ConnectionError:
+        # Log the error and return a message to the client
+        logging.exception("Unable to connect to Azure")
+        return jsonify({"success": False, "error": "Unable to connect to Azure. Please check your network connection."}), 503
     except Exception as e:
         # Log the error and return a message to the client
         logging.exception("Error occurred while enabling diagnostics")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Failed to enable diagnostics. If the issue persists, you may need to enable the Operational Insights Provider. Error details: " + str(e)}), 500
     
-# Get diagnostics settings for a subscription
-import logging
-
 # Get diagnostics settings for a subscription
 @app.route("/subscriptions/<subscription_id>/diagnostics-settings", methods=["GET"])
 def get_diagnostics_settings(subscription_id):

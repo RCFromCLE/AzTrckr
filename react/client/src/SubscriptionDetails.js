@@ -172,21 +172,10 @@ const handleLAWChange = (event) => {
 
 // You will need these two state variables to store the diagnostics settings
 const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
-const [diagnosticsDestination, setDiagnosticsDestination] = useState("");
 const [diagnosticsMessage, setDiagnosticsMessage] = useState("");
 const [selectedResourceGroup, setSelectedResourceGroup] = useState(""); // Stores the selected resource group
 const [diagnosticsSettings, setDiagnosticsSettings] = useState([]);
 
-
-// Extracts the LAW name from the resource URI
-const extractLAWName = (resourceUri) => {
-  if (!resourceUri) return '';
-  const parts = resourceUri.split('/');
-  if (parts.length > 8) {
-    return parts[8];
-  }
-  return '';
-};
 
 // Fetch current diagnostics settings status when subscription changes
 useEffect(() => {
@@ -232,22 +221,36 @@ const enableDiagnosticsForLAW = async () => {
     return;
   }
 
-  const response = await fetch(
-    `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/enable-diagnostics`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspaceId: selectedLAW }),
-    }
-  );
+  try {
+    const response = await fetch(
+      `${process.env.REACT_APP_FLASK_API_BASE_URL}{subscription.subscriptionId}/enable-diagnostics`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: selectedLAW }),
+      }
+    );
 
-  const data = await response.json();
-  console.log('Enable Diagnostics Response:', data); // Log the response for debugging
-  if (data.success) {
-    onMessage && onMessage("Diagnostics enabled successfully for the Log Analytics Workspace.");
-    fetchLogAnalyticsWorkspaces();
-  } else {
-    onMessage && onMessage(`Error: ${data.error}`);
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Enable Diagnostics Response:', data); // Log the response for debugging
+      if (data.success) {
+        onMessage && onMessage("Diagnostics enabled successfully for the Log Analytics Workspace.");
+        fetchLogAnalyticsWorkspaces();
+      } else {
+        onMessage && onMessage(`Error: ${data.error}`);
+      }
+    } else if (response.status === 401) {
+      onMessage && onMessage(`Error: Authentication failed. Please check your Azure credentials.`);
+    } else if (response.status === 503) {
+      onMessage && onMessage(`Error: Unable to connect to Azure. Please check your network connection.`);
+    } else if (response.status === 500) {
+      onMessage && onMessage(`Error: Failed to enable diagnostics. You may need to enable the Operational Insights Provider.`);
+    } else {
+      onMessage && onMessage(`Error: Unexpected error occurred.`);
+    }
+  } catch (error) {
+    console.error('Error during fetch:', error);
   }
 };
 
@@ -377,7 +380,7 @@ return (
 
 {/* Activity Logs */}
 <StyledSection>
-  <StyledH3>AzTrckr Activity Logs</StyledH3>
+  <StyledH3>Enable AzTrckr Activity Logs</StyledH3>
 {diagnosticsEnabled && diagnosticsSettings.length > 0 ? (
   <div>
     {diagnosticsSettings.map((setting, index) => (
@@ -409,7 +412,7 @@ return (
               logAnalyticsWorkspaces.find((law) => law.id === selectedLAW).diagnosticsEnabled)
           }
         >
-          Enable Activity Logs
+        Enable
         </StyledButton>
       </div>
       {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
