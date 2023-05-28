@@ -86,7 +86,21 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
   const [message, setMessage] = useState(""); // Stores the message to be displayed
   const [logAnalyticsWorkspaces, setLogAnalyticsWorkspaces] = useState([]); // Stores the list of Log Analytics Workspaces
   const [selectedLAW, setSelectedLAW] = useState(""); // Stores the selected Log Analytics Workspace
-
+  const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false); // Stores whether diagnostics are enabled
+  const [diagnosticsMessage, setDiagnosticsMessage] = useState(""); // Stores the diagnostics message
+  const [selectedResourceGroup, setSelectedResourceGroup] = useState(""); // Stores the selected resource group
+  const [diagnosticsSettings, setDiagnosticsSettings] = useState([]); // Stores the diagnostics settings
+  const [logCategories, setLogCategories] = useState([
+    { name: "Administrative", checked: false },
+    { name: "Security", checked: false },
+    { name: "ServiceHealth", checked: false },
+    { name: "Alert", checked: false },
+    { name: "Recommendation", checked: false },
+    { name: "Policy", checked: false },
+    { name: "Autoscale", checked: false },
+    { name: "ResourceHealth", checked: false },
+  ]);
+  
   // Function to display a message and clear it after 10 seconds
   const displayMessage = (newMessage) => {
     setMessage(newMessage);
@@ -170,13 +184,6 @@ const handleLAWChange = (event) => {
   setSelectedLAW(event.target.value);
 };
 
-// You will need these two state variables to store the diagnostics settings
-const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
-const [diagnosticsMessage, setDiagnosticsMessage] = useState("");
-const [selectedResourceGroup, setSelectedResourceGroup] = useState(""); // Stores the selected resource group
-const [diagnosticsSettings, setDiagnosticsSettings] = useState([]);
-
-
 // Fetch current diagnostics settings status when subscription changes
 useEffect(() => {
   const fetchDiagnosticsSettings = async () => {
@@ -207,30 +214,36 @@ useEffect(() => {
 }, [subscription]);
 
 
+
+// Modify the checkbox handling function to update the checked state of the relevant category
+const handleLogCategoryChange = (event) => {
+  const { name, checked } = event.target;
+  setLogCategories((prevCategories) =>
+    prevCategories.map((category) =>
+      category.name === name ? { ...category, checked } : category
+    )
+  );
+};
+
+const selectedCategories = logCategories.filter((category) => category.checked).map((category) => category.name);
+
 // Enable diagnostics for the selected Log Analytics Workspace
 const enableDiagnosticsForLAW = async () => {
-  if (!selectedLAW) {
-    onMessage && onMessage("Please select a Log Analytics Workspace.");
-    return;
-  }
-
   const LAW = logAnalyticsWorkspaces.find((law) => law.id === selectedLAW);
   const currentSettings = diagnosticsSettings.find((setting) => setting.workspaceName === LAW.name);
   if (LAW && currentSettings && currentSettings.enabled) {
     onMessage && onMessage("Diagnostics are already enabled for this Log Analytics Workspace.");
     return;
   }
-
   try {
     const response = await fetch(
-      `${process.env.REACT_APP_FLASK_API_BASE_URL}{subscription.subscriptionId}/enable-diagnostics`,
+      `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/enable_diagnostics`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId: selectedLAW }),
+        body: JSON.stringify({ workspaceId: selectedLAW, logCategories: selectedCategories }),
       }
     );
-
     if (response.ok) {
       const data = await response.json();
       console.log('Enable Diagnostics Response:', data); // Log the response for debugging
@@ -342,83 +355,97 @@ return (
       {subscription && <StyledP><Strong>Total Resources:</Strong> {totalResources}</StyledP>}
     </StyledSection>
 
-{/* Create Resource Group */}
-<StyledSection>
-  <StyledH3>Create AzTrckr Resource Group</StyledH3>
-  <div>
-    <StyledInput type="text" id="resourceGroupNameInput" placeholder="aztrckr-rg-01" />
-  </div>
-  <div>
-    <br />
-    <StyledSelect id="locationSelect">
-      <option value="">-- Select a location --</option>
-      {locations.map((location) => (
-        <option key={location} value={location}>
-          {location}
-        </option>
-      ))}
-    </StyledSelect>
-  </div>
-  <StyledButton onClick={createResourceGroup}>Create</StyledButton>
-</StyledSection>
-
-<StyledSection>
-  <StyledH3>Delete AzTrckr Resource Group</StyledH3>
-  <div>
-    <StyledLabel htmlFor="resourceGroupDeleteSelect"></StyledLabel>
-    <StyledSelect id="resourceGroupDeleteSelect" value={selectedResourceGroup} onChange={(e) => setSelectedResourceGroup(e.target.value)}>
-      <option value="">-- Select a resource group --</option>
-      {resourceGroups.map((group) => (
-        <option key={group.name} value={group.name}>
-          {group.name}
-        </option>
-      ))}
-    </StyledSelect>
-  </div>
-  <StyledButton onClick={() => deleteResourceGroup(selectedResourceGroup)}>Delete</StyledButton>
-</StyledSection>
-
-{/* Activity Logs */}
-<StyledSection>
-  <StyledH3>Enable AzTrckr Activity Logs</StyledH3>
-{diagnosticsEnabled && diagnosticsSettings.length > 0 ? (
-  <div>
-    {diagnosticsSettings.map((setting, index) => (
-      <StyledP key={index}>
-        Diagnostic Setting: <Strong>{setting.name}</Strong> <br />
-        Log Analytics Workspace: <Strong>{setting.workspaceName}</Strong> <br />
-      </StyledP>
-    ))}
-  </div>
-) : (
-  <StyledP>No log analytics workspaces found. Create one below to enable activity logs.</StyledP>
-)}
-  {logAnalyticsWorkspaces && logAnalyticsWorkspaces.length > 0 && (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <StyledSelect id="lawSelect" value={selectedLAW} onChange={handleLAWChange}>
-          <option value="">-- Select a workspace --</option>
-          {logAnalyticsWorkspaces.map((workspace) => (
-            <option key={workspace.id} value={workspace.id}>
-              {workspace.name}
+    {/* Create Resource Group */}
+    <StyledSection>
+      <StyledH3>Create AzTrckr Resource Group</StyledH3>
+      <div>
+        <StyledInput type="text" id="resourceGroupNameInput" placeholder="aztrckr-rg-01" />
+      </div>
+      <div>
+        <br />
+        <StyledSelect id="locationSelect">
+          <option value="">-- Select a location --</option>
+          {locations.map((location) => (
+            <option key={location} value={location}>
+              {location}
             </option>
           ))}
         </StyledSelect>
-        <StyledButton
-          onClick={enableDiagnosticsForLAW}
-          disabled={
-            !selectedLAW ||
-            (logAnalyticsWorkspaces.find((law) => law.id === selectedLAW) &&
-              logAnalyticsWorkspaces.find((law) => law.id === selectedLAW).diagnosticsEnabled)
-          }
-        >
-        Enable
-        </StyledButton>
       </div>
-      {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
-    </div>
-  )}
+      <StyledButton onClick={createResourceGroup}>Create</StyledButton>
+    </StyledSection>
+
+    <StyledSection>
+      <StyledH3>Delete AzTrckr Resource Group</StyledH3>
+      <div>
+        <StyledLabel htmlFor="resourceGroupDeleteSelect"></StyledLabel>
+        <StyledSelect id="resourceGroupDeleteSelect" value={selectedResourceGroup} onChange={(e) => setSelectedResourceGroup(e.target.value)}>
+          <option value="">-- Select a resource group --</option>
+          {resourceGroups.map((group) => (
+            <option key={group.name} value={group.name}>
+              {group.name}
+            </option>
+          ))}
+        </StyledSelect>
+      </div>
+      <StyledButton onClick={() => deleteResourceGroup(selectedResourceGroup)}>Delete</StyledButton>
+    </StyledSection>
+
+{/* Logging Categories */}
+<StyledSection>
+  <StyledH3>Select Categories to Log</StyledH3>
+  {logCategories.map((category, index) => (
+  <div key={index}>
+    <input
+      type="checkbox"
+      id={`log-category-${index}`}
+      name={category.name}
+      checked={category.checked}
+      onChange={handleLogCategoryChange}
+    />
+    <label htmlFor={`log-category-${index}`}>{category.name}</label>
+  </div>
+))}
 </StyledSection>
+
+    {diagnosticsEnabled && diagnosticsSettings.length > 0 ? (
+      <div>
+        {diagnosticsSettings.map((setting, index) => (
+          <StyledP key={index}>
+            Diagnostic Setting: <Strong>{setting.name}</Strong> <br />
+            Log Analytics Workspace: <Strong>{setting.workspaceName}</Strong> <br />
+          </StyledP>
+        ))}
+      </div>
+    ) : (
+      <StyledP>No log analytics workspaces found. Create one below to enable activity logs.</StyledP>
+    )}
+
+    {logAnalyticsWorkspaces && logAnalyticsWorkspaces.length > 0 && (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <StyledSelect id="lawSelect" value={selectedLAW} onChange={handleLAWChange}>
+            <option value="">-- Select a workspace --</option>
+            {logAnalyticsWorkspaces.map((workspace) => (
+              <option key={workspace.id} value={workspace.id}>
+                {workspace.name}
+              </option>
+            ))}
+          </StyledSelect>
+          <StyledButton
+            onClick={enableDiagnosticsForLAW}
+            disabled={
+              !selectedLAW ||
+              (logAnalyticsWorkspaces.find((law) => law.id === selectedLAW) &&
+                logAnalyticsWorkspaces.find((law) => law.id === selectedLAW).diagnosticsEnabled)
+            }
+          >
+          Enable
+          </StyledButton>
+        </div>
+        {diagnosticsMessage && <StyledP>{diagnosticsMessage}</StyledP>}
+      </div>
+    )}
 
     {/* Create Log Analytics Workspace */}
     <StyledSection>
