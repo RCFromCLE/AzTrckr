@@ -14,6 +14,8 @@ from azure.mgmt.monitor.models import (
     LogSettings,
     MetricSettings,
 )
+from azure.loganalytics import LogAnalyticsDataClient
+from azure.loganalytics.models import QueryBody
 import logging
 
 # Need to specify exact origins in production
@@ -167,11 +169,10 @@ def delete_resource_group(subscription_id, resource_group_name):
         logging.exception(f"Error occurred while deleting Resource Group: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# Enable diagnostics for a subscription
 @app.route("/subscriptions/<subscription_id>/enable_diagnostics", methods=["POST"])
 def enable_diagnostics(subscription_id):
     try:
-        # get the payload from request
+        # Get the payload from request
         payload = request.get_json()
         workspace_id = payload.get("workspaceId")
 
@@ -181,6 +182,18 @@ def enable_diagnostics(subscription_id):
                 jsonify({"success": False, "error": "Workspace ID is required."}),
                 400,
             )
+
+        # Get the log categories from the payload, or default to all categories
+        log_categories = payload.get("logCategories", [
+            "Administrative",
+            "Security",
+            "ServiceHealth",
+            "Alert",
+            "Recommendation",
+            "Policy",
+            "Autoscale",
+            "ResourceHealth"
+        ])
 
         # Use Azure Default Credentials to authenticate with Azure
         credential = DefaultAzureCredential()
@@ -195,14 +208,8 @@ def enable_diagnostics(subscription_id):
         diagnostic_settings = DiagnosticSettingsResource(
             workspace_id=workspace_id,
             logs=[
-                LogSettings(category="Administrative", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="Security", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="ServiceHealth", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="Alert", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="Recommendation", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="Policy", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="Autoscale", enabled=True, retention_policy=retention_policy),
-                LogSettings(category="ResourceHealth", enabled=True, retention_policy=retention_policy),
+                LogSettings(category=category, enabled=True, retention_policy=retention_policy)
+                for category in log_categories
             ],
             metrics=[
                 MetricSettings(time_grain=None, category=None, enabled=True, retention_policy=retention_policy),
@@ -228,8 +235,7 @@ def enable_diagnostics(subscription_id):
     except Exception as e:
         # Log the error and return a message to the client
         logging.exception("Error occurred while enabling diagnostics")
-        return jsonify({"success": False, "error": "Failed to enable diagnostics. If the issue persists, you may need to enable the Operational Insights Provider. Error details: " + str(e)}), 500
-    
+        return jsonify({"success": False, "error": "Failed to enable diagnostics. If the issue persists, you may need to enable the Operational Insights Provider. Error details: " + str(e)}), 500    
 # Get diagnostics settings for a subscription
 @app.route("/subscriptions/<subscription_id>/diagnostics-settings", methods=["GET"])
 def get_diagnostics_settings(subscription_id):
@@ -348,3 +354,30 @@ def create_log_analytics_workspace(subscription_id):
 
 if __name__ == "__main__":
     app.run()
+
+@app.route("/subscriptions/<subscription_id>/log-analytics-workspaces/<workspace_id>/", methods=["POST"])
+def execute_log_analytics_query(subscription_id, workspace_id):
+    try:
+        payload = request.get_json()
+        query = payload.get("query")
+        
+        if not query:
+            return (
+                jsonify({"success": False, "error": "KQL query is required."}),
+                400,
+            )
+        
+        credential = DefaultAzureCredential()
+        
+        # Create a client to execute KQL queries
+        client = LogAnalyticsDataClient(credential)
+        
+        # Execute the query
+        response = client.query(workspace_id, QueryBody(query=query))
+
+        # Parsing the response to a more friendly format can be added here
+        return jsonify({"success": True, "data": response.as_dict()})
+        
+    except Exception as e:
+        logging.exception(f"Error occurred while executing Log Analytics query: {str(e)}")
+        return jsonify({"error": str(e)}), 500

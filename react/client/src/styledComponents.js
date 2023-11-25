@@ -9,6 +9,7 @@ export const StyledDiv = styled.div`
   font-family: Arial, sans-serif;
   padding: 20px;
 `;
+
 // StyledButton component represents a styled button
 export const StyledButton = styled.button`
   background-color: ${props => props.theme.toggleBorder};
@@ -28,6 +29,16 @@ export const StyledButton = styled.button`
     cursor: not-allowed;
   }
 `;
+
+export const StyledInput = styled.input`
+  padding: 0.5em;
+  margin: 0.5em;
+  color: ${props => props.theme.text};
+  background: ${props => props.theme.body};
+  border: none;
+  border-radius: 3px;
+`;
+
 // StyledSelect component represents a styled select dropdown
 export const StyledSelect = styled.select`
   color: ${props => props.theme.text};
