@@ -1,39 +1,60 @@
-// createresourcegroup.js
 import React, { useState } from 'react';
-import styled from 'styled-components';
 import { StyledButton, StyledSelect, StyledSection, StyledH3, StyledInput, StyledMessage } from './styledComponents';
 
 const CreateResourceGroup = ({ onMessage, subscriptionId, locations }) => {
   const [resourceGroupName, setResourceGroupName] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorOccurred, setErrorOccurred] = useState(false);
+  const [buttonText, setButtonText] = useState('Create'); // Initially set to 'Create'
 
-  // Function to create a resource group to be called when the user clicks the Create Resource Group button
   const createResourceGroup = async () => {
-    if (!resourceGroupName || !selectedLocation) {
-      onMessage && onMessage("Resource Group Name and Location are required.");
+    if (!resourceGroupName || !selectedLocation || isLoading) {
       return;
     }
 
+    setIsLoading(true);
+    setButtonText('Creating...'); // Update button text while creating
+
+    const payload = { resourceGroupName, location: selectedLocation };
+    let response;
+
     try {
-      // Call the API to create the resource group
-      const response = await fetch(
+      response = await fetch(
         `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscriptionId}/create-resource-group`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resourceGroupName, location: selectedLocation }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
         }
       );
+
       const data = await response.json();
-      if (data.success) {
+      console.log('Create Resource Group Response:', data);
+
+      if (response.status === 201 || (response.status === 200 && data && data.success)) {
         onMessage && onMessage("Resource Group created successfully.");
-        // Additional logic or state updates after successful resource group creation
+        setResourceGroupName('');
+        setSelectedLocation('');
+        setErrorOccurred(false);
+        setButtonText('Success'); // Update button text to 'Success' after success
+
+        // Reset button text to 'Create' after a delay (e.g., 2 seconds)
+        setTimeout(() => {
+          setButtonText('Create');
+        }, 2000);
       } else {
-        onMessage && onMessage(`Error: ${data.error}`);
+        setErrorOccurred(true);
+        setButtonText('Create'); // Update button text to 'Create' after error
       }
     } catch (error) {
       console.error("Error creating Resource Group:", error);
-      onMessage && onMessage("An error occurred while creating the Resource Group.");
+      setErrorOccurred(true);
+      setButtonText('Create'); // Update button text to 'Create' after error
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -62,7 +83,12 @@ const CreateResourceGroup = ({ onMessage, subscriptionId, locations }) => {
           ))}
         </StyledSelect>
       </div>
-      <StyledButton onClick={createResourceGroup}>Create</StyledButton>
+      <StyledButton onClick={createResourceGroup} disabled={isLoading}>
+        {buttonText}
+      </StyledButton>
+      {errorOccurred && (
+        <StyledMessage>An error occurred while creating the Resource Group.</StyledMessage>
+      )}
     </StyledSection>
   );
 };

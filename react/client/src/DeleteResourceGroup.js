@@ -1,42 +1,55 @@
-import React, { useState } from 'react';
-import { StyledButton, StyledSelect, StyledSection, StyledH3 } from './styledComponents';
+import React, { useState } from "react";
+import styled from 'styled-components';
 
-// DeleteResourceGroup component
-const DeleteResourceGroup = ({ resourceGroups, selectedResourceGroup, setSelectedResourceGroup, deleteResourceGroup }) => {
-  const [successMessage, setSuccessMessage] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
+const StyledSelect = styled.select`
+  /* Add your select styles here */
+`;
 
-  const handleDeleteResourceGroup = () => {
-    deleteResourceGroup(selectedResourceGroup, (response, error) => {
-      if (error) {
-        // Handle the error response
-        setErrorMessage(`Error deleting resource group '${selectedResourceGroup}': ${error.message}`);
-        console.error(error);
-      } else {
-        // Handle the successful response
-        setSuccessMessage(`Resource group '${selectedResourceGroup}' deleted successfully`);
-        console.log(response);
+const StyledButton = styled.button`
+  /* Add your button styles here */
+`;
+
+const DeleteResourceGroup = ({ resourceGroups, onDelete }) => {
+  const [selectedResourceGroup, setSelectedResourceGroup] = useState("");
+
+  const handleDeleteClick = async () => {
+    if (selectedResourceGroup) {
+      try {
+        // Call the onDelete function to initiate the delete operation
+        const response = await onDelete(selectedResourceGroup);
+
+        if (response.success) {
+          // Handle successful deletion, e.g., display a message or update the UI
+          console.log(`Successfully deleted resource group: ${selectedResourceGroup}`);
+        } else {
+          // Handle deletion failure, e.g., display an error message
+          console.error(`Failed to delete resource group: ${selectedResourceGroup}`);
+        }
+
+        setSelectedResourceGroup(""); // Clear the selection after deletion (you can customize this behavior)
+      } catch (error) {
+        console.error("Error during resource group deletion:", error);
       }
-    });
+    }
   };
 
   return (
-    <StyledSection>
-      <StyledH3>Delete AzTrckr Resource Group</StyledH3>
-      {errorMessage && <p>{errorMessage}</p>}
-      {successMessage && <p>{successMessage}</p>}
-      <div>
-        <StyledSelect id="resourceGroupDeleteSelect" value={selectedResourceGroup} onChange={(e) => setSelectedResourceGroup(e.target.value)}>
-          <option value="">-- Select a resource group --</option>
-          {resourceGroups.map((group) => (
-            <option key={group.name} value={group.name}>
-              {group.name}
-            </option>
-          ))}
-        </StyledSelect>
-      </div>
-      <StyledButton onClick={handleDeleteResourceGroup}>Delete</StyledButton>
-    </StyledSection>
+    <div>
+      <label htmlFor="resourceGroupDeleteSelect">Select a resource group to delete:</label>
+      <StyledSelect
+        id="resourceGroupDeleteSelect"
+        value={selectedResourceGroup}
+        onChange={(e) => setSelectedResourceGroup(e.target.value)}
+      >
+        <option value="">-- Select a resource group --</option>
+        {resourceGroups.map((group) => (
+          <option key={group.name} value={group.name}>
+            {group.name}
+          </option>
+        ))}
+      </StyledSelect>
+      <StyledButton onClick={handleDeleteClick}>Delete</StyledButton>
+    </div>
   );
 };
 

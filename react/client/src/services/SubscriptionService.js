@@ -39,7 +39,7 @@ export async function createResourceGroup(subscriptionId, resourceGroupName, loc
   return response.json();
 }
 
-export async function deleteResourceGroup(subscriptionId, resourceGroupName) {
+export async function OnDeleteResourceGroup(subscriptionId, resourceGroupName) {
   const response = await fetch(
     `${BASE_URL}/subscriptions/${subscriptionId}/resource-groups/${resourceGroupName}`,
     {

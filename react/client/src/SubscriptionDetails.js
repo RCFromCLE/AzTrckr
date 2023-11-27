@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import LAWCreate from "./LAWCreate";
 import CreateResourceGroup from "./CreateResourceGroup";
-// import DeleteResourceGroup from "./DeleteResourceGroup";
+// import OnDeleteResourceGroup from "./DeleteResourceGroup";
 import styled from 'styled-components';
 import { StyledDiv, StyledButton, StyledSelect, StyledSection, StyledH2, StyledH3, StyledP, Strong, StyledLabel, StyledMessage } from './styledComponents';
-// Start of SubscriptionDetails component
 
+// Start of SubscriptionDetails component
 const SubscriptionDetails = ({ subscription, onMessage }) => {
   // State variables
   const [totalResources, setTotalResources] = useState(null); // Stores the total number of resources
@@ -31,14 +31,19 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
     { name: "Autoscale", checked: false },
     { name: "ResourceHealth", checked: false },
   ]);
+
+  // state variable for storing the last 3 events
+  const [notificationEvents, setNotificationEvents] = useState([]);
   
   // Function to display a message and clear it after 10 seconds
   const displayMessage = (newMessage) => {
     setMessage(newMessage);
     setTimeout(() => {
       setMessage("");
-    }, 10000); // The message will disappear after 10 seconds
+    }, 15000); // The message will disappear after 15 seconds
   };
+
+  
   useEffect(() => {
     // Fetch data when the subscription changes
     if (subscription) {
@@ -51,6 +56,7 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
       setTotalResources(null);
     }
   }, [subscription]);
+
   // Fetches the total number of resources in the subscription
   const fetchTotalResources = async () => {
     const response = await fetch(
@@ -62,6 +68,19 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
     );
     setTotalResources(subscriptionData.resourceCount);
   };
+
+  // Function to log user interactions
+  const logUserInteraction = (interaction) => {
+    console.log(`User interaction: ${interaction}`);
+    
+    // Update notificationEvents with the latest event
+    setNotificationEvents((prevEvents) => {
+      // Keep the last three events and discard the rest
+      const newEvents = [...prevEvents, interaction].slice(-3);
+      return newEvents;
+    });
+  };
+
   // Fetches the list of resource groups in the subscription that are managed by AZTrckr
   const fetchResourceGroups = async () => {
     const response = await fetch(
@@ -76,6 +95,7 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
       setResourceGroups([]); // set to empty array if data is not an array
     }
   };
+
   // Fetches the list of locations in the subscription
   const fetchLocations = async () => {
     try {
@@ -109,6 +129,7 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
   const handleLAWChange = (event) => {
     setSelectedLAW(event.target.value);
   };
+  
   // Fetch current diagnostics settings status when subscription changes
   useEffect(() => {
     const fetchDiagnosticsSettings = async () => {
@@ -137,6 +158,7 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
       fetchDiagnosticsSettings();
     }
   }, [subscription]);
+
   // Modify the checkbox handling function to update the checked state of the relevant category
   const handleLogCategoryChange = (event) => {
     const { name, checked } = event.target;
@@ -203,45 +225,6 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
   setQueryResults(data.data);
 };
 
-  // Function to create a resource group to be called when the user clicks the Create Resource Group button
-  // const createResourceGroup = async () => {
-  //   try {
-  //     // Get the resource group name and location from user input
-  //     const resourceGroupName = document.getElementById("resourceGroupNameInput").value;
-  //     const location = document.getElementById("locationSelect").value;
-
-  //     if (!resourceGroupName || !location) {
-  //       onMessage && onMessage("Resource Group Name and Location are required.");
-  //       return;
-  //     }
-
-  //     // Call the API to create the resource group
-  //     const response = await fetch(
-  //       `${process.env.REACT_APP_FLASK_API_BASE_URL}/subscriptions/${subscription.subscriptionId}/create-resource-group`,
-  //       {
-  //         method: "POST",
-  //         headers: { "Content-Type": "application/json" },
-  //         body: JSON.stringify({ resourceGroupName, location }),
-  //       }
-  //     );
-  //     // Parse the response
-  //     const data = await response.json();
-  //     if (data.success) {
-  //       onMessage && onMessage("Resource Group created successfully.");
-  //       // Additional logic or state updates after successful resource group creation
-  //     } else {
-  //       onMessage && onMessage(`Error: ${data.error}`);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error creating Resource Group:", error);
-  //     onMessage && onMessage("An error occurred while creating the Resource Group.");
-  //   }
-  // };
-  // Styled components for the input and button
-  const StyledInput = styled.input`
-  /* Add your input styles here */
-`;
-
   // Function to delete a resource group to be called when the user clicks the Delete Resource Group button
   const deleteResourceGroup = async (resourceGroupName) => {
     try {
@@ -273,6 +256,12 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
     }
   };
 
+
+const StyledInput = styled.input`
+  /* Add your input styles here */
+`;
+
+
   if (!subscription) {
     return <p>Welcome to AzTrckr. Please select a subscription to get started</p>;
   }
@@ -290,15 +279,29 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
         {subscription && <StyledP><Strong>Total Resources:</Strong> {totalResources}</StyledP>}
       </StyledSection>
 
-      <StyledSection>
- {/* Use the CreateResourceGroup component */}
- <CreateResourceGroup
-        subscriptionId={subscription.subscriptionId}
-        locations={locations}
-        onMessage={onMessage}
-      />      </StyledSection>
-       {/* Delete AZTrckr Resource Group */}
-      <StyledSection>
+<StyledSection>
+  <StyledH3>Notification Events</StyledH3>
+  <StyledP>
+    <Strong>Notification Events:</Strong> {notificationEvents.length}
+  </StyledP>
+  <StyledP>
+    <Strong>Last 3 Events:</Strong>
+    <ul>
+      {notificationEvents.map((event, index) => (
+        <li key={index}>{event}</li>
+      ))}
+    </ul>
+  </StyledP>
+</StyledSection>
+
+{/* Use the CreateResourceGroup component */}
+<CreateResourceGroup
+  subscriptionId={subscription.subscriptionId} // Pass only the subscription ID
+  onMessage={displayMessage}
+  locations={locations}
+/>
+ {/* Delete AZTrckr Resource Group */}
+ <StyledSection>
         <StyledH3>Delete AzTrckr Resource Group</StyledH3>
         <div>
           <StyledLabel htmlFor="resourceGroupDeleteSelect"></StyledLabel>
@@ -313,8 +316,7 @@ const SubscriptionDetails = ({ subscription, onMessage }) => {
         </div>
         <StyledButton onClick={() => deleteResourceGroup(selectedResourceGroup)}>Delete</StyledButton>
       </StyledSection>
-
-      {/* Logging Categories */}
+{/* Logging Categories */}
       <StyledSection>
         <StyledH3>Select Categories to Log</StyledH3>
         {logCategories.map((category, index) => (
