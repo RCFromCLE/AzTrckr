@@ -75,3 +75,14 @@ export const StyledMessage = styled.p`
   margin-top: 10px;
   padding: 5px;
 `;
+export const InfoBlurb = styled.span`
+  display: inline-block; /* Ensures it can have padding and margin */
+  background-color: ${props => props.theme.gradientEnd}; /* Use a distinct color for visibility */
+  color: ${props => props.theme.text}; /* Text color from theme */
+  font-size: 0.8em; /* Slightly smaller font size for subtlety */
+  padding: 6px 12px; /* Sufficient padding for emphasis */
+  margin-left: 10px; /* Spacing from preceding elements */
+  border-radius: 8px; /* Rounded corners for a modern look */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Soft shadow for depth */
+  border: 1px solid rgba(255, 255, 255, 0.2); /* Subtle border for definition */
+`;

@@ -14,6 +14,7 @@ from azure.mgmt.monitor.models import (
     LogSettings,
     MetricSettings,
 )
+from azure.mgmt.monitor.models import DiagnosticSettingsResource, LogSettings
 from azure.loganalytics import LogAnalyticsDataClient
 from azure.loganalytics.models import QueryBody
 import logging
@@ -86,7 +87,7 @@ def get_locations():
     except Exception as e:
         logging.exception("Error occurred while getting locations")
         return jsonify({"error": str(e)}), 500
-
+# Get resource groups for a subscription with a specific tag AZTrckr": "true"
 @app.route("/subscriptions/<subscription_id>/resource_groups", methods=["GET"])
 def get_resource_groups(subscription_id):
     try:
@@ -101,7 +102,7 @@ def get_resource_groups(subscription_id):
         resource_group_list = []
 
         for group in resource_groups:
-            if group.tags and tag_name in group.tags:  # Check if resource group has the tag
+            if group.tags and tag_name in group.tags:  # Check if resource group has the tag AZTrckr": "true"
                 resource_group_list.append({"id": group.id, "name": group.name})
 
         if len(resource_group_list) == 0:  # If no resource groups have the tag, return a message
@@ -168,74 +169,60 @@ def delete_resource_group(subscription_id, resource_group_name):
     except Exception as e:
         logging.exception(f"Error occurred while deleting Resource Group: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
+# enable diagnostics for a subscription with selected categories    
 @app.route("/subscriptions/<subscription_id>/enable_diagnostics", methods=["POST"])
 def enable_diagnostics(subscription_id):
     try:
-        # Get the payload from request
         payload = request.get_json()
         workspace_id = payload.get("workspaceId")
+        selected_categories = payload.get("logCategories", [])
 
-        # Check if workspace_id is not present
         if not workspace_id:
-            return (
-                jsonify({"success": False, "error": "Workspace ID is required."}),
-                400,
-            )
+            return jsonify({"success": False, "error": "Workspace ID is required."}), 400
 
-        # Get the log categories from the payload, or default to all categories
-        log_categories = payload.get("logCategories", [
-            "Administrative",
-            "Security",
-            "ServiceHealth",
-            "Alert",
-            "Recommendation",
-            "Policy",
-            "Autoscale",
-            "ResourceHealth"
-        ])
-
+        # Assuming all possible categories
+        all_categories = ["Administrative", "Security", "ServiceHealth", "Alert", 
+                          "Recommendation", "Policy", "Autoscale", "ResourceHealth"]
+        
         # Use Azure Default Credentials to authenticate with Azure
         credential = DefaultAzureCredential()
 
         # Instantiate Monitor Management Client
         monitor_client = MonitorManagementClient(credential, subscription_id)
 
-        # Define a retention policy of 30 days
-        retention_policy = RetentionPolicy(enabled=True, days=30)
+        # Fetch existing settings or initialize if not present
+        existing_settings = None
+        try:
+            existing_settings = monitor_client.diagnostic_settings.get(resource_uri=f"/subscriptions/{subscription_id}",
+                                                                        name="aztrckr-diagnostic-settings")
+        except Exception as e:
+            print(f"Existing diagnostic settings not found: {str(e)}")
 
-        # Define the diagnostic settings
+        # Prepare log settings, enabling selected and disabling all others
+        log_settings = [
+            LogSettings(category=category, enabled=(category in selected_categories))
+            for category in all_categories
+        ]
+
+        # Define the diagnostic settings resource
         diagnostic_settings = DiagnosticSettingsResource(
             workspace_id=workspace_id,
-            logs=[
-                LogSettings(category=category, enabled=True, retention_policy=retention_policy)
-                for category in log_categories
-            ],
-            metrics=[
-                MetricSettings(time_grain=None, category=None, enabled=True, retention_policy=retention_policy),
-            ],
+            logs=log_settings
         )
-
-        resource_uri = f"/subscriptions/{subscription_id}"
 
         # Create or update the diagnostic settings
-        diagnostic_settings_resource = (
-            monitor_client.diagnostic_settings.create_or_update(
-                resource_uri=resource_uri,
-                name="aztrckr-diagnostic-settings",
-                parameters=diagnostic_settings,
-            )
+        result = monitor_client.diagnostic_settings.create_or_update(
+            resource_uri=f"/subscriptions/{subscription_id}",
+            name="aztrckr-diagnostic-settings",
+            parameters=diagnostic_settings
         )
 
-        return jsonify({"success": True})
-    except ConnectionError:
-        # Log the error and return a message to the client
-        logging.exception("Unable to connect to Azure")
-        return jsonify({"success": False, "error": "Unable to connect to Azure. Please check your network connection."}), 503
+        return jsonify({"success": True, "message": "Diagnostic settings updated successfully."})
     except Exception as e:
-        # Log the error and return a message to the client
-        logging.exception("Error occurred while enabling diagnostics")
-        return jsonify({"success": False, "error": "Failed to enable diagnostics. If the issue persists, you may need to enable the Operational Insights Provider. Error details: " + str(e)}), 500    
+        print(f"Error enabling diagnostics: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    
 # Get diagnostics settings for a subscription
 @app.route("/subscriptions/<subscription_id>/diagnostics-settings", methods=["GET"])
 def get_diagnostics_settings(subscription_id):
@@ -292,7 +279,68 @@ def get_diagnostics_settings(subscription_id):
     except Exception as e:
         logging.exception("An error occurred while retrieving diagnostics settings.")
         return jsonify({"success": False, "error": str(e)})
+    
+ # Get current diagnostics settings categories for a subscription      
+@app.route("/subscriptions/<subscription_id>/current_diagnostics_settings", methods=["GET"])
+def get_current_diagnostics_settings(subscription_id):
+    try:
+        credential = DefaultAzureCredential()
+        monitor_client = MonitorManagementClient(credential, subscription_id)
+        
+        # Assuming "aztrckr-diagnostic-settings" is a known diagnostic settings name.
+        # This may need to be dynamically identified based on your application's requirements.
+        settings_name = "aztrckr-diagnostic-settings"
+        try:
+            diagnostic_settings = monitor_client.diagnostic_settings.get(resource_uri=f"/subscriptions/{subscription_id}", name=settings_name)
             
+            # Initialize a dictionary to hold the status of each category
+            categories_status = {category: False for category in ["Administrative", "Security", "ServiceHealth", "Alert", "Recommendation", "Policy", "Autoscale", "ResourceHealth"]}
+            
+            # Update the dictionary based on the actual settings
+            if diagnostic_settings.logs is not None:
+                for log in diagnostic_settings.logs:
+                    if log.category in categories_status:
+                        categories_status[log.category] = log.enabled
+
+            return jsonify({
+                "success": True,
+                "settings": categories_status,
+                "message": f"Current diagnostics settings for {settings_name}"
+            })
+
+        except Exception as e:
+            # If specific settings are not found, it might not be an error per se,
+            # but indicate no settings are configured. Adjust logic as needed.
+            return jsonify({"success": False, "message": "Diagnostic settings not found or another error occurred.", "error": str(e)})
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+#   # get diagnostics settings for a specific LAW within a subscription - no categories
+# @app.route("/subscriptions/<subscription_id>/log-analytics-workspaces/<workspace_id>/diagnostics-settings", methods=["GET"])
+# def get_law_diagnostics_settings(subscription_id, workspace_id):
+#     try:
+#         credential = DefaultAzureCredential()
+#         monitor_client = MonitorManagementClient(credential, subscription_id)
+#         # The resource URI format for a Log Analytics Workspace in Azure Monitor
+#         resource_uri = f"/subscriptions/{subscription_id}/resourceGroups/*/providers/Microsoft.OperationalInsights/workspaces/{workspace_id}"
+        
+#         settings = monitor_client.diagnostic_settings.list(resource_uri)
+
+#         categories_status = {}
+#         for setting in settings.value:
+#             for log in setting.logs:
+#                 categories_status[log.category] = log.enabled
+
+#         return jsonify({"success": True, "settings": categories_status})
+
+#     except Exception as e:
+#         logging.exception("An error occurred while retrieving diagnostics settings for the LAW.")
+#         return jsonify({"success": False, "error": str(e)})
+
+# if __name__ == "__main__":
+#     app.run(debug=True)
+          
 # Get Log Analytics Workspaces for a subscription
 @app.route("/subscriptions/<subscription_id>/log-analytics-workspaces", methods=["GET"])
 def get_log_analytics_workspaces(subscription_id):
@@ -317,6 +365,7 @@ def get_log_analytics_workspaces(subscription_id):
     except Exception as e:
         logging.exception("Error occurred while getting Log Analytics Workspaces")
         return jsonify({"error": str(e)}), 500
+    
 
 # Create a Log Analytics Workspace for a subscription
 @app.route("/subscriptions/<subscription_id>/create-law", methods=["POST"])
@@ -354,7 +403,7 @@ def create_log_analytics_workspace(subscription_id):
 
 if __name__ == "__main__":
     app.run()
-
+# Execute a Log Analytics query
 @app.route("/subscriptions/<subscription_id>/log-analytics-workspaces/<workspace_id>/", methods=["POST"])
 def execute_log_analytics_query(subscription_id, workspace_id):
     try:
